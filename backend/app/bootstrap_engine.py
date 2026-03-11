@@ -23,37 +23,18 @@ def resolve_projections_csv_path(
 
     candidates = []
     if requested:
-        candidates.append(("explicit_path", Path(requested)))
+        candidates.append(("explicit", Path(requested)))
     if env_path:
-        candidates.append(("env_path", Path(env_path)))
-    candidates.append(("default_path", Path(default_path)))
+        candidates.append(("env", Path(env_path)))
+    candidates.append(("default", Path(default_path)))
 
-    selected = None
-    selected_source = None
     for source, p in candidates:
         if p.exists() and p.is_file():
-            selected = p
-            selected_source = source
-            break
+            return p.resolve()
 
-    if trace:
-        trace.log(
-            "resolve_csv_path",
-            "CSV path resolution attempted",
-            explicit_path=explicit_path,
-            env_path=env_path,
-            default_path=str(default_path),
-            selected=str(selected) if selected else None,
-            selected_source=selected_source,
-        )
-
-    if selected is None:
-        attempted = [str(p) for _, p in candidates]
-        raise EngineBootstrapError(
-            f"Could not locate projections CSV. Attempted: {attempted}"
-        )
-
-    return selected.resolve()
+    raise EngineBootstrapError(
+        f"Could not locate projections CSV. Attempted: {[str(p) for _, p in candidates]}"
+    )
 
 
 def _load_raw_players(
