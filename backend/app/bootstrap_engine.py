@@ -5,19 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from app.debug_trace import DebugTrace
+from app.path_utils import get_projections_csv_path
 
 
 class EngineBootstrapError(RuntimeError):
     pass
-
-
-CANONICAL_PROJECTIONS_CSV_PATH = Path(
-    r"C:\Users\dstauffer\Desktop\Fantasy Baseball Draft Assistant\draft-assistant\fantasy-baseball-draft-assistant-backend\Data\Baseball Ranks_2026 Pre-Season.csv"
-)
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
 
 
 def resolve_projections_csv_path(
@@ -27,23 +19,40 @@ def resolve_projections_csv_path(
     requested = explicit_path.strip() if isinstance(explicit_path, str) and explicit_path.strip() else None
     env_value = os.getenv("FBA_PROJECTIONS_CSV")
     env_path = env_value.strip() if isinstance(env_value, str) and env_value.strip() else None
-    selected = Path(requested or env_path or CANONICAL_PROJECTIONS_CSV_PATH)
-    exists = selected.exists() and selected.is_file()
+    default_path = get_projections_csv_path()
+
+    candidates = []
+    if requested:
+        candidates.append(("explicit_path", Path(requested)))
+    if env_path:
+        candidates.append(("env_path", Path(env_path)))
+    candidates.append(("default_path", Path(default_path)))
+
+    selected = None
+    selected_source = None
+    for source, p in candidates:
+        if p.exists() and p.is_file():
+            selected = p
+            selected_source = source
+            break
 
     if trace:
         trace.log(
             "resolve_csv_path",
-            "CSV path resolved",
+            "CSV path resolution attempted",
             explicit_path=explicit_path,
             env_path=env_path,
-            selected=str(selected),
-            exists=exists,
+            default_path=str(default_path),
+            selected=str(selected) if selected else None,
+            selected_source=selected_source,
         )
 
-    if not exists:
+    if selected is None:
+        attempted = [str(p) for _, p in candidates]
         raise EngineBootstrapError(
-            f"Could not locate projections CSV at resolved path: {selected}"
+            f"Could not locate projections CSV. Attempted: {attempted}"
         )
+
     return selected.resolve()
 
 
