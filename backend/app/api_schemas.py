@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 from typing import TypedDict
+from pydantic import BaseModel
 
 
 # ==================================================
@@ -47,7 +48,7 @@ class DraftStatePayload(TypedDict, total=False):
     available_player_ids: list[str] | None
     top_n: int
     include_debug: bool
-    projections_csv_path: str
+    projections_csv_path: str | None = None  # was: str
 
 
 class ApplyPickPayload(TypedDict, total=False):
@@ -143,3 +144,7 @@ class ErrorResponse(TypedDict, total=False):
     error: str        # short error category
     details: str      # human-readable details
     debug: dict[str, Any]  # present only if include_debug=true
+
+class RecommendationRequest(BaseModel):
+    # ...existing fields...
+    projections_csv_path: str | None = None  # was: str

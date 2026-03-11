@@ -17,24 +17,17 @@ def resolve_projections_csv_path(
     trace: DebugTrace | None = None,
 ) -> Path:
     requested = explicit_path.strip() if isinstance(explicit_path, str) and explicit_path.strip() else None
-    env_value = os.getenv("FBA_PROJECTIONS_CSV")
+    env_value = os.getenv("FBA_PROJECTIONS_CSV") or os.getenv("PROJECTIONS_CSV_PATH")
     env_path = env_value.strip() if isinstance(env_value, str) and env_value.strip() else None
-    default_path = get_projections_csv_path()
+    default_path = Path(get_projections_csv_path())
 
-    candidates = []
-    if requested:
-        candidates.append(("explicit", Path(requested)))
-    if env_path:
-        candidates.append(("env", Path(env_path)))
-    candidates.append(("default", Path(default_path)))
-
-    for source, p in candidates:
+    candidates = [p for p in [requested, env_path, str(default_path)] if p]
+    for raw in candidates:
+        p = Path(raw)
         if p.exists() and p.is_file():
             return p.resolve()
 
-    raise EngineBootstrapError(
-        f"Could not locate projections CSV. Attempted: {[str(p) for _, p in candidates]}"
-    )
+    raise EngineBootstrapError(f"Could not locate projections CSV. Attempted: {candidates}")
 
 
 def _load_raw_players(
