@@ -43,8 +43,8 @@ from app.recommendation_engine import recommend_for_user
 from app.api_contracts import get_packaged_recommendation_from_request
 from app.response_packager import get_user_team_profile
 
-# Set this to your CSV path
-CSV_PATH = r"c:\Users\dstauffer\Desktop\Fantasy Baseball Draft Assistant\draft-assistant\fantasy-baseball-draft-assistant-backend\Data\Baseball Ranks_2026 Pre-Season.csv"
+# Fix: use path relative to this file so Railway can find it
+CSV_PATH = Path(__file__).resolve().parent / "Data" / "Baseball Ranks_2026 Pre-Season.csv"
 
 
 def build_player(name: str, positions_raw: str, team: str, adp: float, projection: ProjectionLine) -> Player:
