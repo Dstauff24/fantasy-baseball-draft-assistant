@@ -1,0 +1,10 @@
+﻿{
+  "current_pick": 45,
+  "user_slot": 4,
+  "teams": 12,
+  "drafted_player_ids": ["shohei-ohtani__util", "aaron-judge__of"],
+  "user_roster_player_ids": ["paul-skenes__sp", "austin-riley__3b"],
+  "available_player_ids": null,
+  "include_debug": false,
+  "top_n": 10
+}
