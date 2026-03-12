@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Body
+
+from app.live_draft_service import (
+    apply_pick_operation,
+    get_recommendation_for_payload,
+)
+
+router = APIRouter(prefix="/api", tags=["live-draft"])
+
+
+def _bad_request(details: str) -> dict[str, Any]:
+    return {"ok": False, "error": "Invalid live draft operation", "details": details}
+
+
+@router.post("/recommendation")
+def post_recommendation(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """
+    POST /api/recommendation
+    Accepts: DraftStatePayload
+    Returns: RecommendationResponse
+    """
+    if not isinstance(payload, dict):
+        return _bad_request("payload must be an object")
+    return get_recommendation_for_payload(payload)
+
+
+@router.post("/apply-pick")
+def post_apply_pick(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """
+    POST /api/apply-pick
+    Accepts: ApplyPickPayload { state, picked_player_id, ... }
+    Returns: ApplyPickResponse
+    """
+    if not isinstance(payload, dict):
+        return _bad_request("payload must be an object")
+
+    # Route-level validation before delegating
+    if not isinstance(payload.get("state"), dict):
+        return _bad_request("state is required")
+
+    picked = payload.get("picked_player_id")
+    if not isinstance(picked, str) or not picked.strip():
+        return _bad_request("picked_player_id is required")
+
+    return apply_pick_operation(payload)
+
+
+@router.post("/recommendation-after-pick")
+def post_recommendation_after_pick(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """
+    POST /api/recommendation-after-pick
+    Accepts: ApplyPickPayload { state, picked_player_id, ... }
+    Returns: RecommendationAfterPickResponse — always recomputes recommendation
+    """
+    if not isinstance(payload, dict):
+        return _bad_request("payload must be an object")
+
+    # Route-level validation before delegating
+    if not isinstance(payload.get("state"), dict):
+        return _bad_request("state is required")
+
+    picked = payload.get("picked_player_id")
+    if not isinstance(picked, str) or not picked.strip():
+        return _bad_request("picked_player_id is required")
+
+    op = dict(payload)
+    op["include_recommendation"] = True
+    return apply_pick_operation(op)

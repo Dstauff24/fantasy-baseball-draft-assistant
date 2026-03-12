@@ -1,0 +1,1 @@
+# Makes the app folder a Python package.
