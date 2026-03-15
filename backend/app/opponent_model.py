@@ -232,7 +232,6 @@ def _market_band_candidates(
             p.name,
         ),
     )[:14]
-@@ -157,203 +236,311 @@ def _market_band_candidates(
     value_sorted = available[:12]
 
     merged: list[Player] = []
