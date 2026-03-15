@@ -17,8 +17,6 @@ def _bad_request(details: str) -> dict[str, Any]:
     return {"ok": False, "error": "Invalid live draft operation", "details": details}
 
 
-
-
 @router.get("/players")
 def get_players() -> dict[str, Any]:
     """
