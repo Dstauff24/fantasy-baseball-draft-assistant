@@ -17,16 +17,14 @@ def _bad_request(details: str) -> dict[str, Any]:
     return {"ok": False, "error": "Invalid live draft operation", "details": details}
 
 
-
-
 @router.get("/players")
-def get_players(include_live_context: bool = Query(False)) -> dict[str, Any]:
+def get_players() -> dict[str, Any]:
     """
     GET /api/players
     Returns full ranked player catalog for frontend pool + diagnostics.
     """
     try:
-        return {"ok": True, "players": load_ranked_player_catalog(include_live_context=include_live_context)}
+        return {"ok": True, "players": load_ranked_player_catalog()}
     except Exception as exc:
         return {
             "ok": False,

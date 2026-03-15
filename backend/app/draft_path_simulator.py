@@ -245,22 +245,6 @@ def _simulate_single_branch(
     final_score = float(total_draft_score + roster_quality)
     roster_snapshot = [rp.name for rp in sim_state.get_user_roster()]
 
-    current_pick_value = _candidate_score_from_board(opening_scores, opening_player_id)
-    next_pick_scores, _ = build_decision_board(sim_state, top_n=8)
-    expected_next_pick_value = float(getattr(next_pick_scores[0], "draft_score", 0.0) or 0.0) if next_pick_scores else 0.0
-
-    likely_gone_next = list(getattr(opening_summary, "likely_gone_next", []) or [])
-    likely_available_next = list(getattr(opening_summary, "likely_available_next", []) or [])
-    threatened_positions = list(getattr(opening_summary, "threatened_positions", []) or [])
-    preserved_positions = list(getattr(opening_summary, "preserved_positions", []) or [])
-    fragility_base = float(len(set(threatened_positions)) * 0.8)
-    opening_bucket = _primary_bucket(path_players[0]) if path_players else "UTIL"
-    fragility_hit = 1.6 if opening_bucket in set(threatened_positions) else 0.0
-    path_fragility = round(min(10.0, fragility_base + fragility_hit), 3)
-
-    two_pick_path_score = round(current_pick_value + expected_next_pick_value - path_fragility, 3)
-    three_pick_outlook = round(final_score - path_fragility, 3)
-
     explanation = f"branch={branch_name}"
     if opening_sp_note:
         explanation = f"{explanation}; {opening_sp_note}"
