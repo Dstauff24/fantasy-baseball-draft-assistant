@@ -17,9 +17,6 @@ from app.player_pool import build_player_pool
 from app.valuation import rank_players_by_points
 
 
-LIVE_CONTEXT_NOTE = "default_draft_context_approximation"
-
-
 def _normalize_ranked_output(result: Any) -> tuple[dict[str, Any], list[str]]:
     """
     Normalize rank_players_by_points return shape into (players_by_id, ids_by_rank).
@@ -68,9 +65,7 @@ def _normalize_ranked_output(result: Any) -> tuple[dict[str, Any], list[str]]:
 
 def _build_full_catalog_decision_scores(ranked_players_by_id: dict[str, Any]) -> dict[str, Any]:
     """
-    Compute live-context decision metrics (draft_score, survival, pressure, etc.)
-    using a default DraftState snapshot. These are useful for diagnostics but
-    should not be interpreted as global value metrics.
+    Compute real decision-engine metrics (vorp, draft_score, etc.) for full catalog.
     """
     player_pool = build_player_pool(ranked_players_by_id)
     draft_state = DraftState.create(LeagueConfig(), player_pool)
@@ -109,24 +104,14 @@ def _build_full_catalog_decision_scores(ranked_players_by_id: dict[str, Any]) ->
     return decision_scores_by_id
 
 
-def _value_vs_adp(engine_rank: int, adp_rank: int | None) -> float | None:
-    if adp_rank is None:
-        return None
-    return round(float(adp_rank - engine_rank), 2)
-
-
 def load_ranked_player_catalog(
     projections_csv_path: str | None = None,
-    include_live_context: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Canonical full real-player catalog loader for diagnostics/front-end pool.
 
     Pipeline (reused from existing architecture):
     resolve_projections_csv_path -> load_projections_csv -> rank_players_by_points.
-
-    By default, this returns global-board metrics only.
-    Set include_live_context=True to include default-context decision metrics.
     """
     csv_path = resolve_projections_csv_path(projections_csv_path)
 
@@ -141,9 +126,7 @@ def load_ranked_player_catalog(
     ranked_raw = rank_players_by_points(players_by_id, ScoringConfig())
     ranked_players_by_id, ids_by_rank = _normalize_ranked_output(ranked_raw)
 
-    decision_scores_by_id: dict[str, Any] = {}
-    if include_live_context:
-        decision_scores_by_id = _build_full_catalog_decision_scores(ranked_players_by_id)
+    decision_scores_by_id = _build_full_catalog_decision_scores(ranked_players_by_id)
 
     adp_sorted_ids = sorted(
         ranked_players_by_id.keys(),
@@ -162,64 +145,32 @@ def load_ranked_player_catalog(
         if player is None:
             continue
 
-        adp_rank = adp_rank_by_id.get(pid)
-        row = {
-            # Global board metrics
-            "player_id": player.player_id,
-            "player_name": player.name,
-            "team": player.mlb_team,
-            "positions": list(player.positions or []),
-            "adp": player.adp,
-            "adp_rank": adp_rank,
-            "projected_points": player.projected_points,
-            "engine_rank": engine_rank,
-            "derived_rank": getattr(player, "derived_rank", None),
-            "value_vs_adp": _value_vs_adp(engine_rank, adp_rank),
-            "metrics_scope": "global_board",
-            # Cliff metadata remains useful on global board
-            "cliff_label": None,
-            "cliff_raw_drop": None,
-        }
+        decision = decision_scores_by_id.get(pid)
 
-        if include_live_context:
-            decision = decision_scores_by_id.get(pid)
-            decision_components = getattr(decision, "component_scores", {}) if decision is not None else {}
-            row.update(
-                {
-                    "metrics_scope": "global_plus_live_context",
-                    "live_context_note": LIVE_CONTEXT_NOTE,
-                    # Live-context metrics
-                    "vorp": float(getattr(decision, "vorp", 0.0)) if decision is not None else None,
-                    "draft_score": float(getattr(decision, "draft_score", 0.0)) if decision is not None else None,
-                    "survival_probability": float(getattr(decision, "survival_probability", 0.0)) if decision is not None else None,
-                    "take_now_edge": float(getattr(decision, "take_now_edge", 0.0)) if decision is not None else None,
-                    "roster_fit_score": float(getattr(decision, "roster_fit_score", 0.0)) if decision is not None else None,
-                    "team_need_pressure": float(getattr(decision, "team_need_pressure", 0.0)) if decision is not None else None,
-                    "tier_cliff_score": float(getattr(decision, "tier_cliff_score", 0.0)) if decision is not None else None,
-                    "sp_cliff_multiplier": decision_components.get("sp_cliff_multiplier") if decision is not None else None,
-                    "path_score": None,
-                    # useful cliff debug retained
-                    "cliff_label": decision_components.get("cliff_label") if decision is not None else None,
-                    "cliff_raw_drop": decision_components.get("cliff_raw_drop") if decision is not None else None,
-                }
-            )
-        else:
-            row.update(
-                {
-                    # Keep keys for compatibility, but intentionally null in global mode.
-                    "vorp": None,
-                    "draft_score": None,
-                    "survival_probability": None,
-                    "take_now_edge": None,
-                    "roster_fit_score": None,
-                    "team_need_pressure": None,
-                    "tier_cliff_score": None,
-                    "sp_cliff_multiplier": None,
-                    "path_score": None,
-                    "live_context_note": "excluded_in_global_mode",
-                }
-            )
-
-        catalog.append(row)
+        decision_components = getattr(decision, "component_scores", {}) if decision is not None else {}
+        catalog.append(
+            {
+                "player_id": player.player_id,
+                "player_name": player.name,
+                "team": player.mlb_team,
+                "positions": list(player.positions or []),
+                "adp": player.adp,
+                "adp_rank": adp_rank_by_id.get(pid),
+                "projected_points": player.projected_points,
+                "engine_rank": engine_rank,
+                "derived_rank": getattr(player, "derived_rank", None),
+                "vorp": float(getattr(decision, "vorp", 0.0)) if decision is not None else None,
+                "draft_score": float(getattr(decision, "draft_score", 0.0)) if decision is not None else None,
+                "survival_probability": float(getattr(decision, "survival_probability", 0.0)) if decision is not None else None,
+                "take_now_edge": float(getattr(decision, "take_now_edge", 0.0)) if decision is not None else None,
+                "roster_fit_score": float(getattr(decision, "roster_fit_score", 0.0)) if decision is not None else None,
+                "team_need_pressure": float(getattr(decision, "team_need_pressure", 0.0)) if decision is not None else None,
+                "tier_cliff_score": float(getattr(decision, "tier_cliff_score", 0.0)) if decision is not None else None,
+                "cliff_label": decision_components.get("cliff_label") if decision is not None else None,
+                "cliff_raw_drop": decision_components.get("cliff_raw_drop") if decision is not None else None,
+                "sp_cliff_multiplier": decision_components.get("sp_cliff_multiplier") if decision is not None else None,
+                "path_score": None,
+            }
+        )
 
     return catalog
