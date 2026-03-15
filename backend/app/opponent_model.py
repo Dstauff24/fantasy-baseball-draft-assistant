@@ -354,6 +354,10 @@ def simulate_picks_with_context(
 ) -> OpponentSimulationSummary:
     current_pick = draft_state.get_current_pick_number()
     next_user_pick = draft_state.get_next_user_pick()
+    current_team = get_team_for_pick(current_pick, draft_state.league_config.team_count)
+    user_slot = getattr(draft_state, "user_slot", None)
+    if user_slot is None:
+        user_slot = getattr(draft_state.league_config, "user_draft_slot", None)
 
     if next_user_pick is None or next_user_pick <= current_pick:
         return OpponentSimulationSummary()
@@ -380,7 +384,7 @@ def simulate_picks_with_context(
     sim_view = _SimDraftView(draft_state)
     team_need_by_id: dict[int, TeamNeedProfile] = {}
 
-    for pick_number in range(current_pick, next_user_pick):
+    for pick_number in range(simulation_start_pick, next_user_pick):
         team_id = get_team_for_pick(pick_number, draft_state.league_config.team_count)
         team_profile = build_team_need_profile(sim_view, team_id)
         team_need_by_id[team_id] = team_profile
