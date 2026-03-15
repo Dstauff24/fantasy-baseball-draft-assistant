@@ -4,6 +4,7 @@ from typing import Any
 
 from app.bootstrap_engine import resolve_projections_csv_path
 from app.config import LeagueConfig, ScoringConfig
+from app.draft_context_engine import build_draft_context
 from app.draft_decision_engine import (
     build_position_window_map,
     build_replacement_baselines,
@@ -76,6 +77,7 @@ def _build_full_catalog_decision_scores(ranked_players_by_id: dict[str, Any]) ->
 
     candidate_pool = draft_state.get_available_players_by_value()
     baselines = build_replacement_baselines(draft_state)
+    draft_context = build_draft_context(draft_state)
 
     position_window_map = build_position_window_map(draft_state, candidate_pool)
     bucket_leader_map = {
@@ -95,7 +97,7 @@ def _build_full_catalog_decision_scores(ranked_players_by_id: dict[str, Any]) ->
             position_window_map=position_window_map,
             dropoff_ranks=dropoff_ranks,
             bucket_leader_map=bucket_leader_map,
-            draft_context=None,
+            draft_context=draft_context,
         )
         decision_scores_by_id[player.player_id] = score
 
@@ -145,6 +147,7 @@ def load_ranked_player_catalog(
 
         decision = decision_scores_by_id.get(pid)
 
+        decision_components = getattr(decision, "component_scores", {}) if decision is not None else {}
         catalog.append(
             {
                 "player_id": player.player_id,
@@ -163,6 +166,9 @@ def load_ranked_player_catalog(
                 "roster_fit_score": float(getattr(decision, "roster_fit_score", 0.0)) if decision is not None else None,
                 "team_need_pressure": float(getattr(decision, "team_need_pressure", 0.0)) if decision is not None else None,
                 "tier_cliff_score": float(getattr(decision, "tier_cliff_score", 0.0)) if decision is not None else None,
+                "cliff_label": decision_components.get("cliff_label") if decision is not None else None,
+                "cliff_raw_drop": decision_components.get("cliff_raw_drop") if decision is not None else None,
+                "sp_cliff_multiplier": decision_components.get("sp_cliff_multiplier") if decision is not None else None,
                 "path_score": None,
             }
         )
