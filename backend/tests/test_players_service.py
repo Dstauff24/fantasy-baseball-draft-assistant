@@ -31,6 +31,9 @@ def test_load_ranked_player_catalog_returns_rows_with_expected_keys():
         "roster_fit_score",
         "team_need_pressure",
         "tier_cliff_score",
+        "cliff_label",
+        "cliff_raw_drop",
+        "sp_cliff_multiplier",
         "path_score",
     }
     assert expected_keys.issubset(sample.keys())
@@ -58,3 +61,14 @@ def test_players_route_returns_ok_true_and_players_list():
     assert body.get("ok") is True
     assert isinstance(body.get("players"), list)
     assert len(body["players"]) > 0
+
+
+def test_sp_players_expose_cliff_debug_fields():
+    players = load_ranked_player_catalog()
+    sp_players = [p for p in players if "SP" in (p.get("positions") or [])]
+    assert sp_players, "expected SP players in catalog"
+
+    with_cliff = [p for p in sp_players if p.get("cliff_label") in {"minor", "strong", "elite"}]
+    assert with_cliff, "expected at least one SP with detected cliff label"
+
+    assert any((p.get("sp_cliff_multiplier") or 1.0) > 1.0 for p in with_cliff)
