@@ -62,7 +62,7 @@ def _primary_bucket(player: Player) -> str:
             return b
     return "UTIL"
 
-
+@@ -42,114 +66,169 @@ def _primary_bucket(player: Player) -> str:
 def _is_pitcher(player: Player) -> bool:
     return _primary_bucket(player) in {"SP", "RP", "P"}
 
@@ -232,7 +232,6 @@ def _market_band_candidates(
             p.name,
         ),
     )[:14]
-
     value_sorted = available[:12]
 
     merged: list[Player] = []

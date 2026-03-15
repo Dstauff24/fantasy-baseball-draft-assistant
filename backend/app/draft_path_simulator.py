@@ -399,4 +399,3 @@ def simulate_top_candidate_paths(
             r.opening_player_id,
         )
     )
-    return out
