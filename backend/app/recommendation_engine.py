@@ -3,7 +3,7 @@ from copy import deepcopy
 from operator import pos
 
 from app.draft_state import DraftState
-from app.opponent_model import simulate_picks_until_next_turn
+from app.opponent_model import simulate_picks_until_next_turn, simulate_picks_with_context
 from app.models import Player, CandidateScore, RecommendationResult
 from app.draft_decision_engine import (
     build_decision_board,
@@ -181,21 +181,27 @@ def recommend_pick(draft_state: DraftState, top_n: int = 10) -> RecommendationRe
     recommendation = scored[0] if scored else None
     alternative = scored[1] if len(scored) > 1 else None
 
-    likely_available_next_pick = []
-    if decision_scores:
-        for d in sorted(decision_scores, key=lambda x: (-x.survival_probability, -x.draft_score)):
-            p = draft_state.player_pool.get_player(d.player_id)
-            if p is not None:
-                likely_available_next_pick.append(p)
-            if len(likely_available_next_pick) >= 5:
-                break
-    else:
-        likely_available_next_pick = draft_state.get_available_players_by_value(5)
+    sim_summary = simulate_picks_with_context(draft_state)
 
-    sim = simulate_picks_until_next_turn(draft_state)
+    likely_available_next_pick = []
+    for pid in (sim_summary.likely_available_next or [])[:5]:
+        p = draft_state.player_pool.get_player(pid)
+        if p is not None:
+            likely_available_next_pick.append(p)
+    if not likely_available_next_pick:
+        if decision_scores:
+            for d in sorted(decision_scores, key=lambda x: (-x.survival_probability, -x.draft_score)):
+                p = draft_state.player_pool.get_player(d.player_id)
+                if p is not None:
+                    likely_available_next_pick.append(p)
+                if len(likely_available_next_pick) >= 5:
+                    break
+        else:
+            likely_available_next_pick = draft_state.get_available_players_by_value(5)
+
     likely_taken_before_next_pick = []
     seen = set()
-    for sp in sim:
+    for sp in (sim_summary.simulated_picks or []):
         p = draft_state.player_pool.get_player(sp.player_id)
         if p is not None and p.player_id not in seen:
             seen.add(p.player_id)
@@ -267,6 +273,25 @@ def recommend_pick(draft_state: DraftState, top_n: int = 10) -> RecommendationRe
     else:
         setattr(result, "path_results", [])
         setattr(result, "path_results_debug_reason", "No opening candidates available for path simulation.")
+
+    setattr(result, "likely_available_next_ids", list(sim_summary.likely_available_next or []))
+    setattr(result, "likely_gone_next_ids", list(sim_summary.likely_gone_next or []))
+    setattr(result, "threatened_positions", list(sim_summary.threatened_positions or []))
+    setattr(result, "preserved_positions", list(sim_summary.preserved_positions or []))
+    setattr(result, "projected_team_targets", [
+        {
+            "team_id": int(profile.team_id),
+            "target_positions": list(profile.target_positions),
+            "position_urgency": dict(profile.position_urgency),
+            "explanation": profile.explanation,
+        }
+        for profile in (sim_summary.team_need_profiles or [])
+    ])
+
+    if getattr(result, "path_results", None):
+        best_path = result.path_results[0]
+        setattr(result, "best_two_pick_path_score", float(getattr(best_path, "two_pick_path_score", 0.0) or 0.0))
+        setattr(result, "best_three_pick_outlook", float(getattr(best_path, "three_pick_outlook", 0.0) or 0.0))
 
     return result
 

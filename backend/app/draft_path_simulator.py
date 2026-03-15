@@ -3,7 +3,7 @@ from copy import deepcopy
 from statistics import mean
 
 from app.draft_state import DraftState, get_team_for_pick
-from app.opponent_model import simulate_picks_until_next_turn
+from app.opponent_model import simulate_picks_with_context
 from app.draft_decision_engine import build_decision_board
 
 DEBUG_PATH_SIM = False
@@ -24,19 +24,31 @@ class DraftPathResult:
     average_branch_score: float = 0.0
     branch_scores: dict[str, float] = field(default_factory=dict)
     best_branch_name: str = "best_value"
+    current_pick_value: float = 0.0
+    expected_next_pick_value: float = 0.0
+    path_fragility: float = 0.0
+    two_pick_path_score: float = 0.0
+    three_pick_outlook: float = 0.0
+    likely_available_next: list[str] = field(default_factory=list)
+    likely_gone_next: list[str] = field(default_factory=list)
+    threatened_positions: list[str] = field(default_factory=list)
+    preserved_positions: list[str] = field(default_factory=list)
+    projected_team_targets: list[dict] = field(default_factory=list)
 
 
 def clone_draft_state(draft_state: DraftState) -> DraftState:
     return deepcopy(draft_state)
 
 
-def _advance_to_next_user_pick(sim_state: DraftState) -> None:
-    simulated = simulate_picks_until_next_turn(sim_state) or []
+def _advance_to_next_user_pick(sim_state: DraftState):
+    summary = simulate_picks_with_context(sim_state)
+    simulated = summary.simulated_picks or []
     for sp in simulated:
         try:
             sim_state.apply_pick_by_id(sp.player_id, by_user=False)
         except Exception:
             continue
+    return summary
 
 
 def _is_user_on_clock(sim_state: DraftState) -> bool:
@@ -134,6 +146,20 @@ def _select_candidate_by_branch(board_scores, branch_name: str) -> str | None:
     return getattr(ordered[0], "player_id", None)
 
 
+def _team_targets_as_dicts(summary) -> list[dict]:
+    rows: list[dict] = []
+    for profile in getattr(summary, "team_need_profiles", []) or []:
+        rows.append(
+            {
+                "team_id": int(getattr(profile, "team_id", 0) or 0),
+                "target_positions": list(getattr(profile, "target_positions", []) or []),
+                "position_urgency": dict(getattr(profile, "position_urgency", {}) or {}),
+                "explanation": str(getattr(profile, "explanation", "") or ""),
+            }
+        )
+    return rows
+
+
 def _simulate_single_branch(
     draft_state: DraftState,
     opening_player_id: str,
@@ -148,7 +174,8 @@ def _simulate_single_branch(
     total_draft_score = 0.0
 
     # Advance to user's next actual turn first
-    simulated = simulate_picks_until_next_turn(sim_state)
+    opening_summary = simulate_picks_with_context(sim_state)
+    simulated = opening_summary.simulated_picks
     for sp in simulated:
         try:
             sim_state.apply_pick_by_id(sp.player_id, by_user=False)
@@ -190,7 +217,7 @@ def _simulate_single_branch(
 
     # continuation turns
     for _ in range(max(0, depth - 1)):
-        _advance_to_next_user_pick(sim_state)
+        loop_summary = _advance_to_next_user_pick(sim_state)
 
         if sim_state.get_next_user_pick() == -1:
             break
@@ -236,6 +263,16 @@ def _simulate_single_branch(
         best_branch_name=branch_name,
         average_branch_score=0.0,
         branch_scores={},
+        current_pick_value=round(current_pick_value, 3),
+        expected_next_pick_value=round(expected_next_pick_value, 3),
+        path_fragility=path_fragility,
+        two_pick_path_score=two_pick_path_score,
+        three_pick_outlook=three_pick_outlook,
+        likely_available_next=likely_available_next,
+        likely_gone_next=likely_gone_next,
+        threatened_positions=threatened_positions,
+        preserved_positions=preserved_positions,
+        projected_team_targets=_team_targets_as_dicts(opening_summary),
     )
 
 
@@ -318,7 +355,7 @@ def simulate_path_for_opening_player(
     best_branch_result.best_branch_name = best_branch_name
     best_branch_result.average_branch_score = round(avg_branch_score, 3)
     best_branch_result.branch_scores = branch_scores
-    best_branch_result.explanation = f"V2 multi-branch selected={best_branch_name}"
+    best_branch_result.explanation = f"V2 multi-branch selected={best_branch_name}; {best_branch_result.explanation}"
     return best_branch_result
 
 
