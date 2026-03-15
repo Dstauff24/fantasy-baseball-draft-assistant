@@ -13,6 +13,30 @@ class SimulatedPick:
     adp: float | None
     derived_rank: int | None
     reason: str
+    target_position: str = ""
+    need_score: float = 0.0
+    scarcity_influence: float = 0.0
+
+
+@dataclass
+class TeamNeedProfile:
+    team_id: int
+    target_positions: list[str] = field(default_factory=list)
+    position_urgency: dict[str, float] = field(default_factory=dict)
+    explanation: str = ""
+
+
+@dataclass
+class OpponentSimulationSummary:
+    simulated_picks: list[SimulatedPick] = field(default_factory=list)
+    team_need_profiles: list[TeamNeedProfile] = field(default_factory=list)
+    likely_gone_next: list[str] = field(default_factory=list)
+    likely_available_next: list[str] = field(default_factory=list)
+    threatened_positions: list[str] = field(default_factory=list)
+    preserved_positions: list[str] = field(default_factory=list)
+    threatened_positions_ranked: list[str] = field(default_factory=list)
+    preserved_positions_ranked: list[str] = field(default_factory=list)
+    threat_score_by_position: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -317,6 +341,9 @@ def simulate_picks_with_context(
             sim_available_ids.remove(selected.player_id)
         sim_view.team_rosters.setdefault(team_id, []).append(selected.player_id)
 
+        pick_bucket = _primary_bucket(selected)
+        need_for_pick = float(team_profile.position_urgency.get(pick_bucket, 0.0) or 0.0)
+        scarcity_for_pick = float(scarcity_map.get(pick_bucket, 0.0) or 0.0)
         simulated_picks.append(
             SimulatedPick(
                 pick_number=pick_number,
