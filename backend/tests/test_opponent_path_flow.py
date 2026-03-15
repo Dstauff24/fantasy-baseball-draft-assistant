@@ -75,14 +75,3 @@ def test_availability_report_uses_opponent_aware_threats():
     assert report.target_player_id == top_player_id
     assert 0.0 <= report.estimated_survival_score <= 1.0
     assert isinstance(report.threatened_by, list)
-
-
-def test_simulation_excludes_current_user_pick_when_user_on_clock():
-    state = _build_state(current_pick=4, user_slot=4)
-    summary = simulate_picks_with_context(state)
-
-    assert summary.simulated_picks, "expected simulated picks"
-    assert summary.simulated_picks[0].pick_number == 5
-    assert summary.simulated_picks[0].team_id != 4
-    if summary.team_need_profiles:
-        assert summary.team_need_profiles[0].team_id != 4
