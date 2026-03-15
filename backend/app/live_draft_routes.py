@@ -17,14 +17,16 @@ def _bad_request(details: str) -> dict[str, Any]:
     return {"ok": False, "error": "Invalid live draft operation", "details": details}
 
 
+
+
 @router.get("/players")
-def get_players() -> dict[str, Any]:
+def get_players(include_live_context: bool = Query(False)) -> dict[str, Any]:
     """
     GET /api/players
     Returns full ranked player catalog for frontend pool + diagnostics.
     """
     try:
-        return {"ok": True, "players": load_ranked_player_catalog()}
+        return {"ok": True, "players": load_ranked_player_catalog(include_live_context=include_live_context)}
     except Exception as exc:
         return {
             "ok": False,
@@ -57,32 +59,3 @@ def post_apply_pick(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     # Route-level validation before delegating
     if not isinstance(payload.get("state"), dict):
         return _bad_request("state is required")
-
-    picked = payload.get("picked_player_id")
-    if not isinstance(picked, str) or not picked.strip():
-        return _bad_request("picked_player_id is required")
-
-    return apply_pick_operation(payload)
-
-
-@router.post("/recommendation-after-pick")
-def post_recommendation_after_pick(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    """
-    POST /api/recommendation-after-pick
-    Accepts: ApplyPickPayload { state, picked_player_id, ... }
-    Returns: RecommendationAfterPickResponse — always recomputes recommendation
-    """
-    if not isinstance(payload, dict):
-        return _bad_request("payload must be an object")
-
-    # Route-level validation before delegating
-    if not isinstance(payload.get("state"), dict):
-        return _bad_request("state is required")
-
-    picked = payload.get("picked_player_id")
-    if not isinstance(picked, str) or not picked.strip():
-        return _bad_request("picked_player_id is required")
-
-    op = dict(payload)
-    op["include_recommendation"] = True
-    return apply_pick_operation(op)
