@@ -51,6 +51,15 @@ class PlayerDecisionScore:
     component_scores: dict = field(default_factory=dict)
 
 
+@dataclass
+class TierCliffContext:
+    score: float
+    raw_drop: float
+    cliff_label: str
+    sp_cliff_multiplier: float
+    early_round_multiplier: float
+
+
 _BUCKET_ORDER = ("C", "2B", "3B", "SS", "1B", "OF")
 _BASELINE_STARTERS = {
     "C": 12,
@@ -120,31 +129,76 @@ def calculate_player_vorp(draft_state: DraftState, player, baselines: dict[str, 
     return projected - baseline.replacement_points
 
 
-def detect_tier_cliff_score(draft_state: DraftState, player) -> float:
+def detect_tier_cliff_context(draft_state: DraftState, player, draft_context=None) -> TierCliffContext:
     bucket = _primary_position_bucket(player)
     players = _players_in_bucket(draft_state, bucket)
     if not players:
-        return 0.0
+       return TierCliffContext(0.0, 0.0, "none", 1.0, 1.0)
 
     idx = next((i for i, p in enumerate(players) if p.player_id == player.player_id), -1)
     if idx < 0:
-        return 0.0
+         return TierCliffContext(0.0, 0.0, "none", 1.0, 1.0)
 
     current_pts = float(player.projected_points or 0.0)
 
+    raw_drop = 0.0
+    cliff_label = "none"
+
     # modest last-meaningful-player bump
     if idx == len(players) - 1:
-        return 1.0
+        raw_drop = 6.0
+        cliff_label = "minor"
+        base_score = 1.0
+    else:
+        next_pts = float(players[idx + 1].projected_points or 0.0)
+        raw_drop = max(0.0, current_pts - next_pts)
+        if raw_drop >= 30.0:
+            cliff_label = "elite"
+            base_score = 5.0
+        elif raw_drop >= 18.0:
+            cliff_label = "strong"
+            base_score = 3.0
+        elif raw_drop >= 9.0:
+            cliff_label = "minor"
+            base_score = 1.5
+        else:
+            base_score = 0.0
 
-    next_pts = float(players[idx + 1].projected_points or 0.0)
-    drop = current_pts - next_pts
-    if drop >= 35:
-        return 5.0
-    if drop >= 20:
-        return 3.0
-    if drop >= 10:
-        return 1.5
-    return 0.0
+    sp_cliff_multiplier = 1.0
+    if bucket == "SP" and cliff_label != "none":
+        if cliff_label == "elite":
+            sp_cliff_multiplier = 1.7
+        elif cliff_label == "strong":
+            sp_cliff_multiplier = 1.4
+        else:
+            sp_cliff_multiplier = 1.2
+
+    current_round = getattr(draft_context, "current_round", None)
+    if current_round is None:
+        current_pick = max(1, int(draft_state.get_current_pick_number()))
+        current_round = ((current_pick - 1) // int(draft_state.league_config.team_count)) + 1
+
+    early_round_multiplier = 1.0
+    if bucket == "SP" and cliff_label != "none":
+        if current_round <= 3:
+            early_round_multiplier = 1.35
+        elif current_round <= 6:
+            early_round_multiplier = 1.2
+        elif current_round <= 10:
+            early_round_multiplier = 1.1
+
+    score = base_score * sp_cliff_multiplier * early_round_multiplier
+    return TierCliffContext(
+        score=float(round(score, 3)),
+        raw_drop=float(round(raw_drop, 3)),
+        cliff_label=cliff_label,
+        sp_cliff_multiplier=float(round(sp_cliff_multiplier, 3)),
+        early_round_multiplier=float(round(early_round_multiplier, 3)),
+    )
+
+
+def detect_tier_cliff_score(draft_state: DraftState, player) -> float:
+    return detect_tier_cliff_context(draft_state, player, draft_context=None).score
 
 
 def _team_bucket_counts(draft_state: DraftState, team_id: int) -> dict[str, int]:
@@ -586,7 +640,8 @@ def score_draft_candidate(
     vorp = calculate_player_vorp(draft_state, player, baselines)
     vorp_bonus = _bounded_vorp_bonus(vorp)
 
-    tier_cliff_score = float(detect_tier_cliff_score(draft_state, player) or 0.0)
+    cliff_context = detect_tier_cliff_context(draft_state, player, draft_context=draft_context)
+    tier_cliff_score = float(cliff_context.score or 0.0)
     team_need_pressure = float(calculate_team_need_pressure(draft_state, player) or 0.0)
     roster_fit_score = float(calculate_roster_fit_score(draft_state, player) or 0.0)
 
@@ -616,6 +671,15 @@ def score_draft_candidate(
     if take_now_edge <= 0.0:
         take_now_edge = position_dropoff
 
+    sp_take_now_multiplier = 1.0
+    if primary_bucket == "SP" and cliff_context.cliff_label != "none":
+        sp_take_now_multiplier = 1.0 + min(0.5, (cliff_context.sp_cliff_multiplier - 1.0) * 0.75)
+        if getattr(draft_context, "current_round", 99) <= 3:
+            sp_take_now_multiplier += 0.15
+        elif getattr(draft_context, "current_round", 99) <= 6:
+            sp_take_now_multiplier += 0.08
+
+    take_now_edge *= sp_take_now_multiplier
     take_now_bonus = float(_bounded_take_now_bonus(take_now_edge) or 0.0)
     window_comparison_bonus = float(
         calculate_window_comparison_bonus(player, position_window_map, dropoff_ranks) or 0.0
@@ -687,11 +751,12 @@ def score_draft_candidate(
         current_pick = int(draft_state.get_current_pick_number())
         user_roster = draft_state.get_user_roster()
         user_sp_count = sum(1 for rp in user_roster if "SP" in rp.positions)
+        is_elite_or_strong_cliff = cliff_context.cliff_label in {"elite", "strong"}
 
         if current_pick <= 36 and user_sp_count >= 1:
-            applied_early_sp_penalty -= 2.5
+            applied_early_sp_penalty -= 1.4 if is_elite_or_strong_cliff else 2.3
         if current_pick <= 60 and user_sp_count >= 2:
-            applied_early_sp_penalty -= 3.0
+            applied_early_sp_penalty -= 1.8 if is_elite_or_strong_cliff else 2.8
 
     displayed_roster_fit_score = raw_roster_fit_score - applied_early_sp_penalty
 
@@ -709,7 +774,13 @@ def score_draft_candidate(
         category_balance_bonus = 0.0
 
     # Phase 3: board pressure
-    board_pressure = calculate_board_pressure_score(draft_state, player, survival_probability)
+    board_pressure = calculate_board_pressure_score(
+        draft_state,
+        player,
+        survival_probability,
+        draft_context=draft_context,
+        tier_cliff_context=cliff_context,
+    )
     board_pressure_score = float(board_pressure.board_pressure_score or 0.0)
     next_turn_loss_risk = float(board_pressure.next_turn_loss_risk or 0.0)
     expected_value_loss_if_wait = float(board_pressure.expected_value_loss_if_wait or 0.0)
@@ -791,6 +862,12 @@ def score_draft_candidate(
         "position_dropoff": round(position_dropoff, 3),
         "position_dropoff_rank": float(position_dropoff_rank),
         "expected_fallback_player": expected_fallback_name,
+        "tier_cliff_score": round(tier_cliff_score, 3),
+        "cliff_label": cliff_context.cliff_label,
+        "cliff_raw_drop": round(cliff_context.raw_drop, 3),
+        "sp_cliff_multiplier": round(cliff_context.sp_cliff_multiplier, 3),
+        "early_round_cliff_multiplier": round(cliff_context.early_round_multiplier, 3),
+        "sp_take_now_multiplier": round(sp_take_now_multiplier, 3),
 
         "sp_build_penalty": round(reported_sp_penalty, 3),
         "early_sp_penalty": round(reported_early_sp_penalty, 3),
@@ -812,6 +889,8 @@ def score_draft_candidate(
 
         "is_bucket_leader": bool(is_bucket_leader),
         "is_bucket_fallback_player": bool(is_bucket_fallback_player),
+        "primary_bucket": primary_bucket,
+        "positions": list(getattr(player, "positions", []) or []),
     }
 
     return PlayerDecisionScore(
@@ -884,9 +963,9 @@ def _decision_engine_sp_build_penalty(draft_state: DraftState, player) -> float:
 
     penalty = 0.0
     if current_pick <= 36 and user_sp_count >= 1:
-        penalty -= 6.0
+        penalty -= 4.0
     if current_pick <= 60 and user_sp_count >= 2:
-        penalty -= 8.0
+        penalty -= 6.0
     return penalty
 
 
