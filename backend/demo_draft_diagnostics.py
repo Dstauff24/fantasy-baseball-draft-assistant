@@ -42,6 +42,9 @@ def main() -> None:
         "roster_fit_score",
         "team_need_pressure",
         "tier_cliff_score",
+        "cliff_label",
+        "cliff_raw_drop",
+        "sp_cliff_multiplier",
     ]
 
     print("\n=== Top Player Diagnostics (Real Data) ===")
@@ -64,6 +67,9 @@ def main() -> None:
             _fmt(row.get("roster_fit_score")),
             _fmt(row.get("team_need_pressure")),
             _fmt(row.get("tier_cliff_score")),
+            _fmt(row.get("cliff_label")),
+            _fmt(row.get("cliff_raw_drop")),
+            _fmt(row.get("sp_cliff_multiplier")),
         ]
         print(" | ".join(line))
 
@@ -87,6 +93,9 @@ def main() -> None:
                 "roster_fit_score",
                 "team_need_pressure",
                 "tier_cliff_score",
+                "cliff_label",
+                "cliff_raw_drop",
+                "sp_cliff_multiplier",
                 "path_score",
             ],
         )
@@ -109,6 +118,9 @@ def main() -> None:
                     "roster_fit_score": row.get("roster_fit_score"),
                     "team_need_pressure": row.get("team_need_pressure"),
                     "tier_cliff_score": row.get("tier_cliff_score"),
+                    "cliff_label": row.get("cliff_label"),
+                    "cliff_raw_drop": row.get("cliff_raw_drop"),
+                    "sp_cliff_multiplier": row.get("sp_cliff_multiplier"),
                     "path_score": row.get("path_score"),
                 }
             )
