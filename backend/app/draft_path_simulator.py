@@ -172,6 +172,8 @@ def _simulate_single_branch(
     path_players: list = []
     total_points = 0.0
     total_draft_score = 0.0
+    current_pick_value = 0.0
+    expected_next_pick_value = 0.0
 
     # Advance to user's next actual turn first
     opening_summary = simulate_picks_with_context(sim_state)

@@ -121,7 +121,7 @@ def _bucket_scarcity_pressure_from_snapshot(bucket_snapshot: dict[str, list[Play
     drop = max(0.0, top - baseline)
 
     scarcity = min(4.5, (drop / 18.0) + (4.0 / max(1, len(players))))
-  
+    if bucket == "SP":
         scarcity += 0.75
     return round(scarcity, 3)
 
@@ -361,6 +361,8 @@ def simulate_picks_with_context(
 
     if next_user_pick is None or next_user_pick <= current_pick:
         return OpponentSimulationSummary()
+
+    simulation_start_pick = current_pick + 1 if user_slot is not None and int(current_team) == int(user_slot) else current_pick
 
     simulated_picks: list[SimulatedPick] = []
     sim_available_ids = list(draft_state.available_player_ids)

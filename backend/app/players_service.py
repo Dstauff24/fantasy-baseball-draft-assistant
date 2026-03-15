@@ -118,6 +118,7 @@ def _value_vs_adp(engine_rank: int, adp_rank: int | None) -> float | None:
 def load_ranked_player_catalog(
     projections_csv_path: str | None = None,
     include_live_context: bool = False,
+    **_ignored_kwargs: Any,
 ) -> list[dict[str, Any]]:
     """
     Canonical full real-player catalog loader for diagnostics/front-end pool.

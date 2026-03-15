@@ -133,11 +133,11 @@ def detect_tier_cliff_context(draft_state: DraftState, player, draft_context=Non
     bucket = _primary_position_bucket(player)
     players = _players_in_bucket(draft_state, bucket)
     if not players:
-       return TierCliffContext(0.0, 0.0, "none", 1.0, 1.0)
+        return TierCliffContext(0.0, 0.0, "none", 1.0, 1.0)
 
     idx = next((i for i, p in enumerate(players) if p.player_id == player.player_id), -1)
     if idx < 0:
-         return TierCliffContext(0.0, 0.0, "none", 1.0, 1.0)
+        return TierCliffContext(0.0, 0.0, "none", 1.0, 1.0)
 
     current_pts = float(player.projected_points or 0.0)
 
