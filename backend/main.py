@@ -22,6 +22,11 @@ app.add_middleware(
 
 app.include_router(live_draft_router)
 
+
+@app.get("/")
+def root():
+    return {"ok": True}
+
 @app.get("/health")
 def health():
     return {"ok": True}
