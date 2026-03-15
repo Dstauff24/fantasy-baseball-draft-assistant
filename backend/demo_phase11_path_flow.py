@@ -33,12 +33,18 @@ def main() -> None:
 
     print("\nLikely gone before next pick:")
     for sp in summary.simulated_picks[:10]:
-        print(f"- Pick {sp.pick_number} Team {sp.team_id}: {sp.player_name} ({sp.reason})")
+        print(
+            f"- Pick {sp.pick_number} Team {sp.team_id}: {sp.player_name} "
+            f"[{sp.target_position}] (need={sp.need_score:.2f}, scarcity={sp.scarcity_influence:.2f}) {sp.reason}"
+        )
 
     print("\nLikely available next (top ids):")
     print(summary.likely_available_next[:10])
     print("Threatened positions:", summary.threatened_positions)
     print("Preserved positions:", summary.preserved_positions)
+    print("Threatened positions (ranked):", summary.threatened_positions_ranked)
+    print("Preserved positions (ranked):", summary.preserved_positions_ranked)
+    print("Threat score by position:", summary.threat_score_by_position)
 
 
 if __name__ == "__main__":
