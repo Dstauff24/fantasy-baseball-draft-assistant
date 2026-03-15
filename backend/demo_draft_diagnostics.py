@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import csv
 from pathlib import Path
 
@@ -17,8 +16,17 @@ def _fmt(value):
     return str(value)
 
 
-def _global_headers() -> list[str]:
-    return [
+def main() -> None:
+    catalog = load_ranked_player_catalog()
+
+    if not catalog:
+        print("No players found in catalog.")
+        return
+
+    top_n = 40
+    rows = catalog[:top_n]
+
+    headers = [
         "engine_rank",
         "player_name",
         "team",
@@ -27,24 +35,6 @@ def _global_headers() -> list[str]:
         "adp",
         "adp_rank",
         "derived_rank",
-        "value_vs_adp",
-        "vorp",
-        "cliff_label",
-        "cliff_raw_drop",
-    ]
-
-
-def _live_headers() -> list[str]:
-    return [
-        "engine_rank",
-        "player_name",
-        "team",
-        "positions",
-        "projected_points",
-        "adp",
-        "adp_rank",
-        "derived_rank",
-        "value_vs_adp",
         "vorp",
         "draft_score",
         "survival_probability",
@@ -52,34 +42,12 @@ def _live_headers() -> list[str]:
         "roster_fit_score",
         "team_need_pressure",
         "tier_cliff_score",
-        "sp_cliff_multiplier",
         "cliff_label",
         "cliff_raw_drop",
+        "sp_cliff_multiplier",
     ]
 
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Draft diagnostics table")
-    parser.add_argument(
-        "--mode",
-        choices=["global_board", "live_context"],
-        default="global_board",
-        help="global_board (default) excludes live-context metrics; live_context includes default-context approximations.",
-    )
-    parser.add_argument("--top", type=int, default=40)
-    args = parser.parse_args()
-
-    include_live_context = args.mode == "live_context"
-    catalog = load_ranked_player_catalog(include_live_context=include_live_context)
-
-    if not catalog:
-        print("No players found in catalog.")
-        return
-
-    rows = catalog[: max(1, args.top)]
-    headers = _live_headers() if include_live_context else _global_headers()
-
-    print(f"\n=== Top Player Diagnostics ({args.mode}) ===")
+    print("\n=== Top Player Diagnostics (Real Data) ===")
     print(" | ".join(headers))
     print("-" * 220)
     for row in rows:
@@ -92,39 +60,70 @@ def main() -> None:
             _fmt(row.get("adp")),
             _fmt(row.get("adp_rank")),
             _fmt(row.get("derived_rank")),
-            _fmt(row.get("value_vs_adp")),
             _fmt(row.get("vorp")),
+            _fmt(row.get("draft_score")),
+            _fmt(row.get("survival_probability")),
+            _fmt(row.get("take_now_edge")),
+            _fmt(row.get("roster_fit_score")),
+            _fmt(row.get("team_need_pressure")),
+            _fmt(row.get("tier_cliff_score")),
+            _fmt(row.get("cliff_label")),
+            _fmt(row.get("cliff_raw_drop")),
+            _fmt(row.get("sp_cliff_multiplier")),
         ]
-        if include_live_context:
-            line.extend(
-                [
-                    _fmt(row.get("draft_score")),
-                    _fmt(row.get("survival_probability")),
-                    _fmt(row.get("take_now_edge")),
-                    _fmt(row.get("roster_fit_score")),
-                    _fmt(row.get("team_need_pressure")),
-                    _fmt(row.get("tier_cliff_score")),
-                    _fmt(row.get("sp_cliff_multiplier")),
-                    _fmt(row.get("cliff_label")),
-                    _fmt(row.get("cliff_raw_drop")),
-                ]
-            )
-        else:
-            line.extend([
-                _fmt(row.get("cliff_label")),
-                _fmt(row.get("cliff_raw_drop")),
-            ])
-
         print(" | ".join(line))
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT_PATH.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=headers + ["metrics_scope", "live_context_note"])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "player_name",
+                "team",
+                "positions",
+                "projected_points",
+                "adp",
+                "adp_rank",
+                "engine_rank",
+                "derived_rank",
+                "vorp",
+                "draft_score",
+                "survival_probability",
+                "take_now_edge",
+                "roster_fit_score",
+                "team_need_pressure",
+                "tier_cliff_score",
+                "cliff_label",
+                "cliff_raw_drop",
+                "sp_cliff_multiplier",
+                "path_score",
+            ],
+        )
         writer.writeheader()
         for row in catalog:
-            row_out = dict(row)
-            row_out["positions"] = "/".join(row.get("positions") or [])
-            writer.writerow({k: row_out.get(k) for k in headers + ["metrics_scope", "live_context_note"]})
+            writer.writerow(
+                {
+                    "player_name": row.get("player_name"),
+                    "team": row.get("team"),
+                    "positions": "/".join(row.get("positions") or []),
+                    "projected_points": row.get("projected_points"),
+                    "adp": row.get("adp"),
+                    "adp_rank": row.get("adp_rank"),
+                    "engine_rank": row.get("engine_rank"),
+                    "derived_rank": row.get("derived_rank"),
+                    "vorp": row.get("vorp"),
+                    "draft_score": row.get("draft_score"),
+                    "survival_probability": row.get("survival_probability"),
+                    "take_now_edge": row.get("take_now_edge"),
+                    "roster_fit_score": row.get("roster_fit_score"),
+                    "team_need_pressure": row.get("team_need_pressure"),
+                    "tier_cliff_score": row.get("tier_cliff_score"),
+                    "cliff_label": row.get("cliff_label"),
+                    "cliff_raw_drop": row.get("cliff_raw_drop"),
+                    "sp_cliff_multiplier": row.get("sp_cliff_multiplier"),
+                    "path_score": row.get("path_score"),
+                }
+            )
 
     print(f"\nWrote diagnostics CSV: {OUTPUT_PATH}")
 
