@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Query
 
 from app.live_draft_service import (
     apply_pick_operation,
