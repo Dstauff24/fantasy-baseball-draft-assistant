@@ -29,6 +29,8 @@ def calculate_board_pressure_score(
     draft_state: DraftState,
     player,
     survival_probability: float,
+    draft_context=None,
+    tier_cliff_context=None,
 ) -> BoardPressureScore:
     current_pick = int(draft_state.get_current_pick_number())
     next_user_pick = int(draft_state.get_next_user_pick())
@@ -51,11 +53,37 @@ def calculate_board_pressure_score(
     # Short window before your next turn increases risk.
     window_pressure = _clamp((max(0, 18 - picks_until_next) / 18.0) * 4.0, 0.0, 4.0)
 
-    run_risk_score = _clamp((next_turn_loss_risk * 0.65) + (window_pressure * 0.85), 0.0, 10.0)
-    market_heat_score = _clamp((adp_pressure * 1.15) + (window_pressure * 0.55), 0.0, 10.0)
+    bucket = "UTIL"
+    positions = set(getattr(player, "positions", []) or [])
+    if "SP" in positions or "P" in positions:
+        bucket = "SP"
+    elif "RP" in positions:
+        bucket = "RP"
+
+    cliff_label = getattr(tier_cliff_context, "cliff_label", "none") if tier_cliff_context else "none"
+    cliff_score = _safe_float(getattr(tier_cliff_context, "score", 0.0), 0.0) if tier_cliff_context else 0.0
+    sp_mult = _safe_float(getattr(tier_cliff_context, "sp_cliff_multiplier", 1.0), 1.0) if tier_cliff_context else 1.0
+    early_mult = _safe_float(getattr(tier_cliff_context, "early_round_multiplier", 1.0), 1.0) if tier_cliff_context else 1.0
+
+    phase_boost = 0.0
+    current_round = _safe_float(getattr(draft_context, "current_round", None), 0.0) if draft_context else 0.0
+    if bucket == "SP" and cliff_label in {"strong", "elite"}:
+        if current_round and current_round <= 3:
+            phase_boost = 1.2
+        elif current_round and current_round <= 6:
+            phase_boost = 0.8
+        else:
+            phase_boost = 0.35
+
+    sp_run_pressure = 0.0
+    if bucket == "SP" and cliff_label != "none":
+        sp_run_pressure = min(3.0, (cliff_score * 0.35) + ((sp_mult - 1.0) * 2.4) + ((early_mult - 1.0) * 1.8) + phase_boost)
+
+    run_risk_score = _clamp((next_turn_loss_risk * 0.65) + (window_pressure * 0.85) + sp_run_pressure, 0.0, 10.0)
+    market_heat_score = _clamp((adp_pressure * 1.15) + (window_pressure * 0.55) + (sp_run_pressure * 0.55), 0.0, 10.0)
 
     board_pressure_score = _clamp(
-        (next_turn_loss_risk * 0.5) + (run_risk_score * 0.3) + (market_heat_score * 0.2),
+        (next_turn_loss_risk * 0.48) + (run_risk_score * 0.33) + (market_heat_score * 0.19),
         0.0,
         10.0,
     )

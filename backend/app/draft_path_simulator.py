@@ -78,6 +78,32 @@ def _candidate_score_from_board(board_scores, player_id: str) -> float:
     return 0.0
 
 
+def _candidate_obj_from_board(board_scores, player_id: str):
+    for cs in (board_scores or []):
+        if getattr(cs, "player_id", None) == player_id:
+            return cs
+    return None
+
+
+def _sp_tier_preservation_bonus(score_obj) -> tuple[float, str]:
+    if score_obj is None:
+        return 0.0, ""
+
+    cliff_label = str((getattr(score_obj, "component_scores", {}) or {}).get("cliff_label", "none"))
+    if cliff_label not in {"strong", "elite"}:
+        return 0.0, ""
+
+    comp = getattr(score_obj, "component_scores", {}) or {}
+    bucket = str(comp.get("primary_bucket", "UTIL"))
+    if bucket != "SP":
+        return 0.0, ""
+
+    cliff_score = float(getattr(score_obj, "tier_cliff_score", 0.0) or 0.0)
+    survival = float(getattr(score_obj, "survival_probability", 0.0) or 0.0)
+    bonus = min(2.8, (cliff_score * 0.28) + ((1.0 - survival) * 1.6))
+    return bonus, f"sp_tier_preservation={cliff_label}"
+
+
 def _branch_pick_key(score_obj, branch_mode: str) -> tuple:
     draft_score = float(getattr(score_obj, "draft_score", 0.0) or 0.0)
     dropoff = float(getattr(score_obj, "position_dropoff", 0.0) or 0.0)
@@ -85,11 +111,15 @@ def _branch_pick_key(score_obj, branch_mode: str) -> tuple:
     deferrability = float(getattr(score_obj, "deferrability_penalty", 0.0) or 0.0)
     survival = float(getattr(score_obj, "survival_probability", 0.0) or 0.0)
 
+    cliff_score = float(getattr(score_obj, "tier_cliff_score", 0.0) or 0.0)
+    cliff_label = str((getattr(score_obj, "component_scores", {}) or {}).get("cliff_label", "none"))
+    cliff_priority = 2.0 if cliff_label == "elite" else (1.0 if cliff_label == "strong" else 0.0)
+
     if branch_mode == "scarcity":
-        return (dropoff, window_bonus, draft_score, -deferrability)
+        return (cliff_priority, cliff_score, dropoff, window_bonus, draft_score, -deferrability)
 
     if branch_mode == "market_timing":
-        market_score = draft_score - (1.15 * deferrability) + ((1.0 - survival) * 2.0)
+        market_score = draft_score - (1.15 * deferrability) + ((1.0 - survival) * 2.0) + (cliff_priority * 0.9)
         return (market_score, draft_score, dropoff)
 
     return (draft_score, dropoff, window_bonus)
@@ -128,6 +158,9 @@ def _simulate_single_branch(
     # opening pick now happens on user's turn
     opening_scores, _ = build_decision_board(sim_state, top_n=12)
     total_draft_score += _candidate_score_from_board(opening_scores, opening_player_id)
+    opening_score_obj = _candidate_obj_from_board(opening_scores, opening_player_id)
+    opening_sp_bonus, opening_sp_note = _sp_tier_preservation_bonus(opening_score_obj)
+    total_draft_score += opening_sp_bonus
 
     if not _apply_pick_by_id(sim_state, opening_player_id):
         opening_player = draft_state.player_pool.get_player(opening_player_id)
@@ -168,6 +201,9 @@ def _simulate_single_branch(
             break
 
         total_draft_score += _candidate_score_from_board(board_scores, pid)
+        branch_score_obj = _candidate_obj_from_board(board_scores, pid)
+        sp_branch_bonus, _ = _sp_tier_preservation_bonus(branch_score_obj)
+        total_draft_score += sp_branch_bonus
         if not _apply_pick_by_id(sim_state, pid):
             break
 
@@ -182,6 +218,10 @@ def _simulate_single_branch(
     final_score = float(total_draft_score + roster_quality)
     roster_snapshot = [rp.name for rp in sim_state.get_user_roster()]
 
+    explanation = f"branch={branch_name}"
+    if opening_sp_note:
+        explanation = f"{explanation}; {opening_sp_note}"
+
     return DraftPathResult(
         opening_player_id=opening_player_id,
         opening_player_name=path_names[0] if path_names else opening_player_id,
@@ -192,7 +232,7 @@ def _simulate_single_branch(
         path_roster_quality=round(roster_quality, 3),
         final_path_score=round(final_score, 3),
         final_roster_snapshot=roster_snapshot,
-        explanation=f"branch={branch_name}",
+        explanation=explanation,
         best_branch_name=branch_name,
         average_branch_score=0.0,
         branch_scores={},
@@ -230,9 +270,9 @@ def calculate_path_roster_quality(sim_state: DraftState, path_players: list) -> 
     q -= util_early * 2.0
 
     if len(first_three) >= 2 and first_three[0] == "SP" and first_three[1] == "SP":
-        q -= 4.0
+        q -= 2.0
     if sp_count >= 2 and len(first_three) >= 3:
-        q -= 3.0
+        q -= 1.5
 
     has_of = "OF" in buckets
     has_scarce_if = any(b in {"SS", "2B", "3B"} for b in buckets)
