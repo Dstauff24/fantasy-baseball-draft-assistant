@@ -27,10 +27,44 @@ def test_simulate_picks_with_context_exposes_team_profiles_and_availability_list
     assert isinstance(summary.likely_available_next, list)
     assert isinstance(summary.threatened_positions, list)
     assert isinstance(summary.preserved_positions, list)
+    assert isinstance(summary.threatened_positions_ranked, list)
+    assert isinstance(summary.preserved_positions_ranked, list)
+    assert isinstance(summary.threat_score_by_position, dict)
 
     first_profile = summary.team_need_profiles[0]
     assert first_profile.target_positions, "expected ranked team target positions"
     assert first_profile.position_urgency, "expected urgency map"
+
+
+def test_team_profiles_are_not_overly_homogeneous_after_seed_picks():
+    state = _build_state(current_pick=28, user_slot=4)
+
+    # Seed a realistic mixed opening so team profiles should diverge.
+    available = state.get_available_players_by_value(36)
+    for idx, player in enumerate(available[:18], start=1):
+        team_id = ((idx - 1) % state.league_config.team_count) + 1
+        state.team_rosters.setdefault(team_id, []).append(player.player_id)
+        if player.player_id in state.available_player_ids:
+            state.available_player_ids.remove(player.player_id)
+
+    summary = simulate_picks_with_context(state)
+    target_signatures = {tuple(profile.target_positions[:3]) for profile in summary.team_need_profiles}
+
+    # At least a couple distinct target orderings should emerge.
+    assert len(target_signatures) >= 2
+
+
+def test_threatened_and_preserved_rankings_are_discriminating():
+    state = _build_state(current_pick=4)
+    summary = simulate_picks_with_context(state)
+
+    threatened = list(summary.threatened_positions_ranked)
+    preserved = list(summary.preserved_positions_ranked)
+
+    assert threatened, "expected non-empty threatened ranking"
+    assert preserved, "expected non-empty preserved ranking"
+    overlap = set(threatened[:3]).intersection(set(preserved[:3]))
+    assert not overlap, f"top threat/preserved overlap too broad: {overlap}"
 
 
 def test_availability_report_uses_opponent_aware_threats():
